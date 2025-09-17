@@ -1,151 +1,75 @@
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.interpolate import PchipInterpolator
 
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+# ---------------------------
+# 1. 앱 제목
+# ---------------------------
+st.set_page_config(page_title="GDP & Coral Dashboard", layout="centered")
+st.title("🌍 GDP & 산호초 백화 현황 대시보드")
+
+# ---------------------------
+# 2. GDP 입력 섹션
+# ---------------------------
+st.header("💰 최근 GDP 입력")
+gdp_value = st.number_input(
+    label="최근 GDP (Billion USD)",
+    min_value=0.0,
+    value=0.0,
+    step=1.0,
+    format="%.0f",
+    help="최근 연도의 GDP(십억 달러 단위)를 입력하세요."
 )
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+st.write(f"입력한 GDP: **{gdp_value:,.0f} B**")
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+# ---------------------------
+# 3. 산호초 백화 데이터 & 그래프
+# ---------------------------
+st.header("🪸 1980~2024 산호초 백화 추이")
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
+# 기준 데이터 (추정치)
+years_known = np.array([1980, 1998, 2010, 2015, 2024])
+bleach_known = np.array([5, 21, 37, 68, 84])  # %
+
+years = np.arange(1980, 2025)
+interp = PchipInterpolator(years_known, bleach_known)
+bleach = np.clip(interp(years), 0, 100)
+remain = 100 - bleach
+
+# 데이터프레임 생성
+df = pd.DataFrame({
+    "연도": years,
+    "백화율(%)": np.round(bleach, 2),
+    "남은 산호(%)": np.round(remain, 2)
+})
+
+# 표 출력
+st.dataframe(df.head(10))
+
+# 그래프
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.plot(years, bleach, label="백화(%)", color="tomato", marker="o")
+ax.plot(years, remain, label="남은 산호(%)", color="royalblue", marker="o")
+ax.set_ylim(0, 100)
+ax.set_xlabel("연도")
+ax.set_ylabel("비율(%)")
+ax.set_title("지구 전체 산호초 백화 추이 (1980–2024)")
+ax.legend()
+ax.grid(alpha=0.3)
+
+st.pyplot(fig)
+
+# ---------------------------
+# 4. 설명
+# ---------------------------
+st.markdown(
     """
-
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
-
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
-
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
-# Draw the actual page
-
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
-
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
+    **해설**  
+    - 1980년 이후 지구 산호초의 백화 현상은 급격히 증가하고 있습니다.  
+    - 2024년에는 약 84%가 백화 영향을 받은 것으로 추정됩니다.  
+    - 기후 변화 완화와 해양 보호 정책이 없으면 남아있는 산호도 빠르게 감소할 수 있습니다.
+    """
 )
-
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
